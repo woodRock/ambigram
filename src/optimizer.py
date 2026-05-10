@@ -205,10 +205,12 @@ class AmbigramOptimizer:
     def _encode_image(self, image_norm: torch.Tensor) -> torch.Tensor:
         """
         Encode a [-1, 1] pixel image to VAE latent space (with gradient).
+        The VAE may be fp16; we cast in/out so the optimizer stays in fp32.
         """
-        latent_dist = self.pipe.vae.encode(image_norm)
+        vae_dtype = next(self.pipe.vae.parameters()).dtype
+        latent_dist = self.pipe.vae.encode(image_norm.to(dtype=vae_dtype))
         latent = latent_dist.latent_dist.sample()
-        return latent * self.pipe.vae.config.scaling_factor
+        return (latent * self.pipe.vae.config.scaling_factor).float()
 
     def _update_sds_range(self, step: int) -> None:
         """Anneal the maximum timestep as optimization progresses."""

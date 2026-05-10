@@ -55,15 +55,17 @@ class SDSLoss(nn.Module):
         noise = torch.randn_like(latent)
         noisy = self.scheduler.add_noise(latent, noise, t)
 
-        # Classifier-free guidance: batch uncond + cond together
-        latent_in = torch.cat([noisy, noisy])
+        # Cast to UNet dtype (may be fp16) for the frozen forward pass
+        unet_dtype = next(self.unet.parameters()).dtype
+        latent_in = torch.cat([noisy, noisy]).to(dtype=unet_dtype)
         emb_in = torch.cat([uncond_emb.expand(bsz, -1, -1),
-                             text_emb.expand(bsz, -1, -1)])
+                             text_emb.expand(bsz, -1, -1)]).to(dtype=unet_dtype)
 
         with torch.no_grad():
             noise_pred = self.unet(latent_in, torch.cat([t, t]), encoder_hidden_states=emb_in).sample
 
-        noise_u, noise_c = noise_pred.chunk(2)
+        # Back to fp32 for gradient arithmetic
+        noise_u, noise_c = noise_pred.float().chunk(2)
         noise_guided = noise_u + self.guidance_scale * (noise_c - noise_u)
 
         # Weighting: w(t) = 1 - ᾱ_t  (variance of the noising process)
