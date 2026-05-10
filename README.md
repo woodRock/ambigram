@@ -1,35 +1,25 @@
 # Ambigram Generator
 
-Generates 180° rotational ambigrams from a text prompt using **Score Distillation Sampling (SDS)** with Stable Diffusion.
-
-No training data needed. Each ambigram is produced by a single optimization run (~1500 steps, ~15 min on an A100).
+Generates 180° rotational **self-ambigrams** — words that read identically when rotated 180° — using CLIP-guided per-glyph optimisation. No training data or diffusion model required.
 
 ---
 
 ## How it works
 
+The word is split into letter pairs. Each pair `(a, b)` at index `i` satisfies `a = word[i]` and `b = word[N-1-i]`, so a single glyph must read as `a` upright and `b` when rotated 180°. All glyphs are optimised simultaneously against CLIP text features, then composed into the final strip.
+
+The composition identity guarantees the result is a self-ambigram regardless of glyph quality:
+
 ```
- ┌─────────────────────────────────────────────────────┐
- │  Optimizable image  (pixel space, sigmoid-constrained)│
- └────────────┬──────────────────────┬─────────────────┘
-              │                      │ rotate 180°
-              ▼                      ▼
-        VAE encode              VAE encode
-              │                      │
-     SDS loss (word A)      SDS loss (word B)
-              │                      │
-              └──────── sum ─────────┘
-                          │
-                    Adam + cosine LR
+rotate_180([ g₀ | g₁ | g₂ | rot(g₁) | rot(g₀) ]) = [ g₀ | g₁ | g₂ | rot(g₁) | rot(g₀) ]
 ```
 
-Two frozen SDS losses guide a single image simultaneously:
-- **Upright view** → reads as *word A*
-- **Rotated 180°** → reads as *word B*
+Two glyph representations are supported:
 
-The image is parameterised as `sigmoid(raw)` so it stays in `[0, 1]`. Initialization blends a rendered rendering of word A with a 180°-rotated rendering of word B to give the optimizer a head start.
-
-Timestep annealing gradually reduces the SDS noise level from coarse global structure to fine-grained legibility as optimization progresses.
+| Mode | Parameterisation | Output |
+|------|-----------------|--------|
+| `pixel` | Direct (1, H, W) tensor, projected gradient descent | PNG |
+| `bezier` | Cubic Bézier stroke control points, differentiable soft rasterizer | PNG + SVG |
 
 ---
 
@@ -39,79 +29,141 @@ Timestep annealing gradually reduces the SDS noise level from coarse global stru
 pip install -r requirements.txt
 ```
 
-You need a CUDA GPU with at least **16 GB VRAM** for SD 1.5 in fp16. An A100 (40/80 GB) is recommended.
-
-The first run downloads ~4 GB of model weights from HuggingFace.
+Runs on CPU, MPS (Apple Silicon), or CUDA. A GPU with ≥8 GB VRAM is recommended; an A100 or H100 gives best speed. The first run downloads ~900 MB of CLIP weights.
 
 ---
 
 ## Usage
 
-### Two-word ambigram
+### Basic
+
 ```bash
-python generate.py --word-a love --word-b hate
+python generate.py --word SWIMS
+python generate.py --word NOON --steps 800 --glyph-size 384
 ```
 
-### Self-ambigram (reads the same when flipped)
+### Bézier mode (smooth strokes + SVG export)
+
 ```bash
-python generate.py --word-a SWIMS
+python generate.py --word SWIMS --mode bezier --n-strokes 12 --steps 800
 ```
 
-### With custom settings
+Control points are initialized from the rendered letter's ink pixels, then optimised. SVG files are saved alongside the PNGs at the end.
+
+### Perceptual loss
+
+Adds VGG16 feature matching towards a clean rendered reference letter — encourages letterform aesthetics beyond what CLIP measures.
+
 ```bash
-python generate.py \
-  --word-a angel \
-  --word-b devil \
-  --steps 2000 \
-  --lr 3e-3 \
-  --lambda-b 1.0 \
-  --guidance-scale 10.0 \
-  --anneal-max-t 300 \
-  --output-dir outputs/
+python generate.py --word SWIMS --use-perceptual --lambda-perc 0.1
+```
+
+### Character classifier loss
+
+A small CNN (trained on synthetic font renders) acts as a differentiable readability signal. Train it once, then use it for all future runs.
+
+```bash
+# One-time setup (takes ~2 min on CPU, ~30s on GPU)
+python tools/generate_font_dataset.py   # renders A-Z with augmentation → data/char_dataset/
+python tools/train_classifier.py        # trains CNN → data/char_classifier.pth
+
+# Use during optimisation
+python generate.py --word SWIMS --use-classifier --lambda-char 0.5
+```
+
+### Faster inference (CUDA only)
+
+```bash
+python generate.py --word SWIMS --torch-compile
+```
+
+Applies `torch.compile` to the CLIP encoder. Adds ~30s warmup on the first run, then speeds up subsequent steps by ~20–30%.
+
+### All improvements combined
+
+```bash
+python generate.py --word SWIMS \
+  --mode bezier --n-strokes 12 \
+  --use-perceptual \
+  --use-classifier \
+  --steps 800 --glyph-size 256
 ```
 
 ---
 
 ## Outputs
 
-Each run writes to `outputs/<word_a>__<word_b>/`:
+All files are written to `outputs/<WORD>/`.
 
 | File | Description |
 |------|-------------|
-| `final.png` | Side-by-side: upright \| rotated 180° |
+| `final.png` | Side-by-side comparison: upright \| rotated 180° |
 | `final_upright.png` | Upright image only |
 | `final_rotated.png` | Rotated image only |
-| `step_NNNNN.png` | Intermediate comparisons every `--log-every` steps |
+| `glyph_i_A_B.png` | Final glyph for pair A↔B |
+| `glyph_i_A_B_rot.png` | That glyph rotated 180° |
+| `glyph_i_A_B.svg` | SVG export (Bézier mode only) |
+| `glyph_i_A_B/step_NNNN.png` | Progress snapshots every `--log-every` steps |
 
 ---
 
-## Key hyperparameters
+## All flags
 
-| Flag | Default | Notes |
-|------|---------|-------|
-| `--steps` | 1500 | More steps → more refined; 1000–2000 usually sufficient |
-| `--lr` | 5e-3 | Adam LR; reduce if the image becomes over-saturated |
-| `--lambda-b` | 1.0 | Relative weight of the rotated-view loss; increase if word B is harder |
-| `--guidance-scale` | 7.5 | CFG scale; 7–12 works well; higher = stronger adherence to prompt |
-| `--min-t` / `--max-t` | 50 / 950 | SDS timestep range; wide range early, narrow late |
-| `--anneal-max-t` | 400 | Final max timestep after annealing; lower = sharper but riskier |
-| `--model` | SD 1.5 | `stabilityai/stable-diffusion-2-1` or `stabilityai/stable-diffusion-xl-base-1.0` also work |
+### Word and output
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--word` | *(required)* | Word to ambigramise |
+| `--output-dir` | `outputs` | Root output directory |
+| `--log-every` | `100` | Save progress snapshots every N steps |
+| `--device` | auto | `cpu`, `cuda`, `mps`, or `cuda:1` etc. |
+
+### CLIP
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--clip-model` | `ViT-L-14` | OpenCLIP model name |
+| `--clip-pretrained` | `openai` | OpenCLIP pretrained weights tag |
+| `--n-augments` | `16` | Random crops per orientation per step |
+| `--torch-compile` | off | Compile CLIP with `torch.compile` (CUDA only) |
+
+### Representation
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--mode` | `pixel` | `pixel` or `bezier` |
+| `--n-strokes` | `10` | Bézier strokes per glyph (bezier mode) |
+| `--stroke-width` | `0.04` | Stroke half-width as fraction of canvas (bezier mode) |
+
+### Optimisation
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--glyph-size` | `256` | Square canvas size per glyph in px |
+| `--steps` | `500` | Optimisation steps |
+| `--lr` | `2e-2` | Adam learning rate |
+
+### Pixel regularisation
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--lambda-tv` | `2e-3` | Total variation weight (pixel mode) |
+| `--lambda-bw` | `0.3` | Black-and-white push weight (pixel mode) |
+
+### Character classifier
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--use-classifier` | off | Enable CNN readability loss |
+| `--classifier-path` | `data/char_classifier.pth` | Path to trained checkpoint |
+| `--lambda-char` | `0.5` | Classifier loss weight |
+
+### Perceptual loss
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--use-perceptual` | off | Enable VGG16 perceptual loss |
+| `--lambda-perc` | `0.1` | Perceptual loss weight |
 
 ---
 
 ## Tips
 
-- **Short words (3–5 chars)** tend to produce cleaner results than long ones.
-- **Words with rotational symmetry** (letters that map to other letters when flipped: n↔u, p↔d, b↔q, m↔w) are much easier.
-- If one word is much longer than the other, increase `--lambda-b` for the shorter/harder one.
-- For self-ambigrams, omit `--word-b`.
-- Add `--use-wandb` to monitor loss curves in Weights & Biases.
-
----
-
-## Method
-
-Based on **DreamFusion** (Poole et al., 2022) — Score Distillation Sampling applied to 2D image optimization.
-
-The key insight: the SDS gradient `w(t) * (ε̂_φ(z_t; y, t) − ε)` can be used as a direct pixel-space update without backpropagating through the UNet (phantom gradient trick), making it cheap to apply two independent SDS losses to the same image from different orientations.
-# ambigram
+- **Words with natural rotational symmetry** are much easier: S, H, I, N, O, X, Z flip to themselves or each other; SWIMS and NOON are classic examples.
+- **Bézier mode** produces cleaner, print-ready output. Pixel mode is faster to iterate.
+- If letters are hard to read, increase `--n-augments` (32–48) or `--steps` (1000+).
+- `--use-perceptual` is most effective when combined with `--use-classifier`.
+- Reduce `--lambda-bw` if Bézier strokes are too thin or fragmented.
