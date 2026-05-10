@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1304" height="156" viewBox="0 0 1304 156">
+  <rect width="1304" height="156" fill="white"/>
+  <!-- upright -->
+  <text x="320" y="16" font-family="monospace" font-size="11" fill="#999" text-anchor="middle" letter-spacing="3">UPRIGHT</text>
+  <g transform="translate(0 20)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 128" style="width: 100%; height: auto; max-width: 480px; max-height: 130px;">
+<rect width="640" height="128" fill="white"/>
+<g transform="translate(0 0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 81.12,23.27 C 39.87,53.68 41.00,39.16 110.81,36.52" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 113.31,57.54 C 77.02,83.66 108.09,87.69 30.08,77.97" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 64.00,126.87 C 103.13,71.49 74.59,99.20 16.42,102.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 7.79,12.73 C 89.73,7.02 115.62,15.47 115.07,25.96" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 110.29,33.05 C 124.09,74.24 65.18,47.95 32.30,61.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 117.87,57.63 C 91.34,127.99 71.05,126.38 38.72,103.74" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(128 0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 11.20,44.29 C 40.31,0.14 4.24,4.20 119.92,15.66" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 6.20,69.79 C 55.23,73.84 44.10,35.12 92.01,60.31" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 11.24,119.72 C 16.29,125.38 33.44,112.44 109.80,116.12" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 31.96,26.28 C 68.93,49.27 64.69,23.14 104.49,32.38" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 101.02,81.32 C 18.78,92.80 61.34,27.59 1.82,53.89" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 106.36,106.80 C 41.07,90.55 30.29,82.07 2.05,94.93" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(256 0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 11.28,23.86 C 28.94,36.58 108.50,48.75 107.86,24.69" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 20.54,49.02 C 34.59,75.34 67.69,62.67 81.66,90.26" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 13.71,83.64 C 11.96,104.67 47.64,118.47 102.88,115.82" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 20.14,103.31 C 19.50,79.25 99.06,91.42 116.72,104.14" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 46.34,37.74 C 60.31,65.33 93.41,52.66 107.46,78.98" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 25.12,12.18 C 80.36,9.53 116.04,23.33 114.29,44.36" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(384 0) rotate(180 64.0 64.0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 11.20,44.29 C 40.31,0.14 4.24,4.20 119.92,15.66" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 6.20,69.79 C 55.23,73.84 44.10,35.12 92.01,60.31" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 11.24,119.72 C 16.29,125.38 33.44,112.44 109.80,116.12" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 31.96,26.28 C 68.93,49.27 64.69,23.14 104.49,32.38" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 101.02,81.32 C 18.78,92.80 61.34,27.59 1.82,53.89" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 106.36,106.80 C 41.07,90.55 30.29,82.07 2.05,94.93" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(512 0) rotate(180 64.0 64.0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 81.12,23.27 C 39.87,53.68 41.00,39.16 110.81,36.52" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 113.31,57.54 C 77.02,83.66 108.09,87.69 30.08,77.97" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 64.00,126.87 C 103.13,71.49 74.59,99.20 16.42,102.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 7.79,12.73 C 89.73,7.02 115.62,15.47 115.07,25.96" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 110.29,33.05 C 124.09,74.24 65.18,47.95 32.30,61.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 117.87,57.63 C 91.34,127.99 71.05,126.38 38.72,103.74" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg></g>
+  <!-- rotated -->
+  <text x="984" y="16" font-family="monospace" font-size="11" fill="#999" text-anchor="middle" letter-spacing="3">ROTATED 180°</text>
+  <g transform="translate(664 20)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 128" style="width: 100%; height: auto; max-width: 480px; max-height: 130px;">
+<rect width="640" height="128" fill="white"/>
+<g transform="rotate(180 320.0 64.0)">
+<g transform="translate(0 0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 81.12,23.27 C 39.87,53.68 41.00,39.16 110.81,36.52" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 113.31,57.54 C 77.02,83.66 108.09,87.69 30.08,77.97" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 64.00,126.87 C 103.13,71.49 74.59,99.20 16.42,102.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 7.79,12.73 C 89.73,7.02 115.62,15.47 115.07,25.96" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 110.29,33.05 C 124.09,74.24 65.18,47.95 32.30,61.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 117.87,57.63 C 91.34,127.99 71.05,126.38 38.72,103.74" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(128 0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 11.20,44.29 C 40.31,0.14 4.24,4.20 119.92,15.66" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 6.20,69.79 C 55.23,73.84 44.10,35.12 92.01,60.31" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 11.24,119.72 C 16.29,125.38 33.44,112.44 109.80,116.12" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 31.96,26.28 C 68.93,49.27 64.69,23.14 104.49,32.38" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 101.02,81.32 C 18.78,92.80 61.34,27.59 1.82,53.89" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 106.36,106.80 C 41.07,90.55 30.29,82.07 2.05,94.93" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(256 0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 11.28,23.86 C 28.94,36.58 108.50,48.75 107.86,24.69" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 20.54,49.02 C 34.59,75.34 67.69,62.67 81.66,90.26" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 13.71,83.64 C 11.96,104.67 47.64,118.47 102.88,115.82" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 20.14,103.31 C 19.50,79.25 99.06,91.42 116.72,104.14" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 46.34,37.74 C 60.31,65.33 93.41,52.66 107.46,78.98" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 25.12,12.18 C 80.36,9.53 116.04,23.33 114.29,44.36" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(384 0) rotate(180 64.0 64.0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 11.20,44.29 C 40.31,0.14 4.24,4.20 119.92,15.66" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 6.20,69.79 C 55.23,73.84 44.10,35.12 92.01,60.31" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 11.24,119.72 C 16.29,125.38 33.44,112.44 109.80,116.12" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 31.96,26.28 C 68.93,49.27 64.69,23.14 104.49,32.38" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 101.02,81.32 C 18.78,92.80 61.34,27.59 1.82,53.89" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 106.36,106.80 C 41.07,90.55 30.29,82.07 2.05,94.93" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(512 0) rotate(180 64.0 64.0)">
+  <rect width="128" height="128" fill="white"/>
+<path d="M 81.12,23.27 C 39.87,53.68 41.00,39.16 110.81,36.52" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 113.31,57.54 C 77.02,83.66 108.09,87.69 30.08,77.97" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 64.00,126.87 C 103.13,71.49 74.59,99.20 16.42,102.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 7.79,12.73 C 89.73,7.02 115.62,15.47 115.07,25.96" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 110.29,33.05 C 124.09,74.24 65.18,47.95 32.30,61.73" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 117.87,57.63 C 91.34,127.99 71.05,126.38 38.72,103.74" fill="none" stroke="black" stroke-width="5.12" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+</svg></g>
+</svg>

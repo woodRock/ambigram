@@ -33,7 +33,7 @@ class Config:
 
     # Representation mode: "pixel" or "bezier"
     mode: str = "pixel"
-    n_strokes: int = 6            # bezier only
+    n_strokes: int = 4            # bezier only
     stroke_width: float = 0.035   # bezier only, in [0, 1] canvas fraction
 
     # Per-glyph optimisation
@@ -166,14 +166,16 @@ class GlyphSetOptimizer:
             self.pixel_params = None   # type: ignore[assignment]
             self._refs = []
             glyphs = []
-            for char_a, _ in pairs:
+            for char_a, char_b in pairs:
                 glyphs.append(
                     BezierGlyph.from_text(
                         char_a,
+                        char_b=char_b,
                         n_strokes=config.n_strokes,
                         size=s,
                         stroke_width=config.stroke_width,
                         device=device,
+                        symmetric=(char_a == char_b),
                     )
                 )
             self.bezier_glyphs = nn.ModuleList(glyphs)
@@ -274,8 +276,15 @@ class GlyphSetOptimizer:
 
             with torch.no_grad():
                 if self.pixel_params is not None:
-                    for p in self.pixel_params:
+                    for idx, p in enumerate(self.pixel_params):
                         p.data.clamp_(0.0, 1.0)
+                        # Hard-project background pixels back to near-white.
+                        # The reference blend tells us which pixels are background
+                        # (value close to 1.0). CLIP otherwise fills these with
+                        # adversarial texture; clamping them post-step is cheaper
+                        # and more reliable than fighting it with a loss term.
+                        bg = self._refs[idx] > 0.85      # (1, H, W) bool
+                        p.data[bg] = p.data[bg].clamp(0.85, 1.0)
                 elif self.bezier_glyphs is not None:
                     for g in self.bezier_glyphs:
                         g.control_points.data.clamp_(0.0, 1.0)

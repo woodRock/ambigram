@@ -1,0 +1,12 @@
+# Large data files
+data/archive.zip
+data/*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*.pth
+.env
+
+# OS
+.DS_Store

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ambigram Generator</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0f0f17;
+  --surface:  #1a1a2e;
+  --border:   #2a2a42;
+  --accent:   #7c9fff;
+  --accent2:  #ff7ca0;
+  --text:     #e0e0f0;
+  --muted:    #666680;
+  --white:    #ffffff;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 48px 24px 80px;
+  gap: 36px;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+header { text-align: center; }
+header h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+header p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  letter-spacing: 0.12em;
+  margin-top: 6px;
+}
+
+/* ── Controls ───────────────────────────────────────────── */
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#word-input {
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  padding: 12px 20px;
+  width: 260px;
+  text-align: center;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+#word-input:focus { border-color: var(--accent); }
+
+.btn {
+  padding: 12px 28px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  letter-spacing: 0.05em;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--accent);  color: var(--bg); }
+.btn-secondary { background: var(--border); color: var(--muted); }
+.btn-primary:hover   { opacity: 0.88; }
+.btn-secondary:hover { opacity: 0.75; }
+.btn-save  { background: #2a3a2a; color: #7cff9f; border: 1px solid #3a5a3a; }
+.btn-save:hover:not(:disabled) { background: #3a4a3a; }
+.btn-save:disabled { opacity: 0.35; cursor: default; }
+
+/* ── Status strip ────────────────────────────────────────── */
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 14px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 340px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--muted);
+  transition: background 0.3s, color 0.3s;
+}
+.status-chip.warmstart { background: #2a3a5e; color: var(--accent); }
+.status-chip.cmaes     { background: #3a2a4e; color: var(--accent2); }
+.status-chip.done      { background: #1e3a2a; color: #7cff9f; }
+
+.step-count { color: var(--muted); font-size: 0.82rem; }
+
+.score-display {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 80px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+  width: 160px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.5s ease;
+}
+
+/* ── SVG panels ─────────────────────────────────────────── */
+.panels {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.panel-label span {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+#label-upright  span { background: var(--accent); }
+#label-rotated  span { background: var(--accent2); }
+
+.svg-card {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 16px 20px;
+  min-width: 300px;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  transition: box-shadow 0.4s;
+  overflow: hidden;
+}
+.svg-card:has(svg path) {
+  box-shadow: 0 8px 40px rgba(124,159,255,0.15);
+}
+.svg-card svg {
+  display: block;
+  max-width: 480px;
+  max-height: 130px;
+  width: 100%;
+  height: auto;
+}
+
+/* ── Error ───────────────────────────────────────────────── */
+.error-msg {
+  color: #ff7ca0;
+  font-size: 0.88rem;
+  text-align: center;
+  max-width: 480px;
+  line-height: 1.5;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AMBIGRAM</h1>
+  <p>Reads the same word rotated 180° &nbsp;·&nbsp; Live SVG optimisation</p>
+</header>
+
+<div class="controls">
+  <input id="word-input" type="text" value="SWIMS" maxlength="10"
+         autocomplete="off" spellcheck="false"
+         onkeydown="if(event.key==='Enter') generate()">
+  <button class="btn btn-primary"    onclick="generate()">Generate</button>
+  <button class="btn btn-secondary"  onclick="stop()">Stop</button>
+  <button class="btn btn-save"       onclick="saveSvg()" id="btn-save" disabled>Save SVG</button>
+</div>
+
+<div class="status-strip">
+  <span class="status-chip" id="phase-chip">idle</span>
+  <span class="step-count">step <b id="step-num">—</b></span>
+  <div class="progress-track"><div class="progress-fill" id="prog"></div></div>
+  <span class="score-display" id="score-disp">—</span>
+</div>
+
+<div class="panels">
+  <div class="panel">
+    <div class="panel-label" id="label-upright"><span></span>Upright</div>
+    <div class="svg-card" id="card-upright">
+      <svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"></svg>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-label" id="label-rotated"><span></span>Rotated 180°</div>
+    <div class="svg-card" id="card-rotated">
+      <svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"></svg>
+    </div>
+  </div>
+</div>
+
+<div class="error-msg" id="err"></div>
+
+<script>
+'use strict';
+
+let ws = null;
+
+function generate() {
+  const word = document.getElementById('word-input').value.trim().toUpperCase();
+  if (!word) return;
+
+  stop();
+  clearError();
+  setStatus('connecting', 0, '—');
+
+  ws = new WebSocket('ws://localhost:8000/ws');
+
+  ws.onopen  = () => ws.send(JSON.stringify({ word }));
+
+  ws.onmessage = ({ data }) => {
+    const msg = JSON.parse(data);
+
+    if (msg.error) {
+      showError(msg.error);
+      stop();
+      return;
+    }
+
+    const pct = msg.pct ?? (msg.phase === 'done' ? 100 : 0);
+    setStatus(msg.phase, pct, msg.score + '%');
+    document.getElementById('step-num').textContent = msg.step;
+
+    if (msg.svg)     setSvg('card-upright', msg.svg);
+    if (msg.svg_rot) setSvg('card-rotated', msg.svg_rot);
+  };
+
+  ws.onclose = () => {
+    const chip = document.getElementById('phase-chip');
+    if (!['done', 'idle'].includes(chip.textContent)) {
+      setStatus('idle', 0, document.getElementById('score-disp').textContent);
+    }
+  };
+}
+
+function stop() {
+  if (ws) { ws.close(); ws = null; }
+}
+
+function setStatus(phase, pct, score) {
+  const chip = document.getElementById('phase-chip');
+  chip.textContent = phase;
+  chip.className   = 'status-chip ' + phase;
+  document.getElementById('prog').style.width       = pct + '%';
+  document.getElementById('score-disp').textContent = score;
+}
+
+function setSvg(cardId, svgText) {
+  if (!svgText) return;
+  const card = document.getElementById(cardId);
+  card.innerHTML = svgText;
+  const svg = card.querySelector('svg');
+  if (svg) {
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+    svg.style.width     = '100%';
+    svg.style.height    = 'auto';
+    svg.style.maxWidth  = '480px';
+    svg.style.maxHeight = '130px';
+  }
+  document.getElementById('btn-save').disabled = false;
+}
+
+function saveSvg() {
+  const word = document.getElementById('word-input').value.trim().toUpperCase() || 'ambigram';
+
+  // Pull the raw SVG strings from the two cards
+  const svgUp  = document.getElementById('card-upright').querySelector('svg');
+  const svgRot = document.getElementById('card-rotated').querySelector('svg');
+  if (!svgUp || !svgRot) return;
+
+  // Serialise each panel's SVG
+  const ser    = new XMLSerializer();
+  const rawUp  = ser.serializeToString(svgUp);
+  const rawRot = ser.serializeToString(svgRot);
+
+  // Parse viewBox to get dimensions so we can lay them out side by side
+  const vb  = svgUp.getAttribute('viewBox') || '0 0 512 128';
+  const [, , vw, vh] = vb.split(' ').map(Number);
+  const gap    = 24;
+  const lblH   = 20;
+  const totalW = vw * 2 + gap;
+  const totalH = vh + lblH + 8;
+
+  const combined = `<svg xmlns="http://www.w3.org/2000/svg" \
+width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
+  <rect width="${totalW}" height="${totalH}" fill="white"/>
+  <!-- upright -->
+  <text x="${vw / 2}" y="${lblH - 4}" font-family="monospace" font-size="11" \
+fill="#999" text-anchor="middle" letter-spacing="3">UPRIGHT</text>
+  <g transform="translate(0 ${lblH})">${rawUp}</g>
+  <!-- rotated -->
+  <text x="${vw + gap + vw / 2}" y="${lblH - 4}" font-family="monospace" \
+font-size="11" fill="#999" text-anchor="middle" letter-spacing="3">ROTATED 180°</text>
+  <g transform="translate(${vw + gap} ${lblH})">${rawRot}</g>
+</svg>`;
+
+  const blob = new Blob([combined], { type: 'image/svg+xml' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${word}_ambigram.svg`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function showError(msg) {
+  document.getElementById('err').textContent = msg;
+}
+function clearError() {
+  document.getElementById('err').textContent = '';
+}
+</script>
+</body>
+</html>

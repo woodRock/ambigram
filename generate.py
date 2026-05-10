@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     # Representation
     p.add_argument("--mode", choices=["pixel", "bezier"], default="pixel",
                    help="Glyph representation: direct pixels or Bézier strokes")
-    p.add_argument("--n-strokes",    type=int,   default=6,
+    p.add_argument("--n-strokes",    type=int,   default=4,
                    help="Number of Bézier strokes per glyph (bezier mode only)")
     p.add_argument("--stroke-width", type=float, default=0.04,
                    help="Stroke half-width as a fraction of canvas size (bezier mode)")
