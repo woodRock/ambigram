@@ -14,6 +14,39 @@ def rotate_180(x: torch.Tensor) -> torch.Tensor:
     return x.flip([-2, -1])
 
 
+def _find_font_path() -> str | None:
+    for name in ("Arial", "DejaVuSans", "LiberationSans", "FreeSans"):
+        for ext in (".ttf", ".TTF"):
+            for search in ("/usr/share/fonts", "/Library/Fonts", "/System/Library/Fonts"):
+                matches = list(Path(search).rglob(f"*{name}*{ext}"))
+                if matches:
+                    return str(matches[0])
+    return None
+
+
+def _fit_font(draw: ImageDraw.ImageDraw, word: str, font_path: str | None,
+              max_w: int, max_h: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Binary-search for the largest font size that fits word inside (max_w, max_h)."""
+    if font_path is None:
+        return ImageFont.load_default()
+
+    lo, hi = 8, max_h * 2
+    best = ImageFont.truetype(font_path, size=lo)
+    for _ in range(16):
+        mid = (lo + hi) // 2
+        font = ImageFont.truetype(font_path, size=mid)
+        bbox = draw.textbbox((0, 0), word, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        if tw <= max_w and th <= max_h:
+            best = font
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo <= 1:
+            break
+    return best
+
+
 def render_text_image(
     word: str,
     size: tuple[int, int] = (512, 512),
@@ -26,27 +59,10 @@ def render_text_image(
     img = Image.new("RGB", (w, h), color=(bg_color, bg_color, bg_color))
     draw = ImageDraw.Draw(img)
 
-    # Try system fonts in order of preference, fall back to default
-    font = None
-    for name in ("Arial", "DejaVuSans", "LiberationSans", "FreeSans"):
-        for ext in (".ttf", ".TTF"):
-            for search in ("/usr/share/fonts", "/Library/Fonts", "/System/Library/Fonts"):
-                path = Path(search)
-                matches = list(path.rglob(f"*{name}*{ext}"))
-                if matches:
-                    try:
-                        target_h = int(h * (1 - 2 * padding))
-                        font = ImageFont.truetype(str(matches[0]), size=target_h)
-                        break
-                    except Exception:
-                        continue
-            if font:
-                break
-        if font:
-            break
-
-    if font is None:
-        font = ImageFont.load_default()
+    font_path = _find_font_path()
+    max_w = int(w * (1 - 2 * padding))
+    max_h = int(h * (1 - 2 * padding))
+    font = _fit_font(draw, word, font_path, max_w, max_h)
 
     bbox = draw.textbbox((0, 0), word, font=font)
     text_w = bbox[2] - bbox[0]
@@ -57,6 +73,73 @@ def render_text_image(
 
     tensor = torch.from_numpy(np.array(img)).float() / 255.0
     return tensor.permute(2, 0, 1)  # CHW
+
+
+def render_text_pil(
+    word: str,
+    size: tuple[int, int] = (512, 512),
+    bg_color: int = 255,
+    fg_color: int = 0,
+    padding: float = 0.15,
+) -> Image.Image:
+    """Same as render_text_image but returns a PIL Image."""
+    h, w = size
+    img = Image.new("RGB", (w, h), color=(bg_color, bg_color, bg_color))
+    draw = ImageDraw.Draw(img)
+
+    font_path = _find_font_path()
+    max_w = int(w * (1 - 2 * padding))
+    max_h = int(h * (1 - 2 * padding))
+    font = _fit_font(draw, word, font_path, max_w, max_h)
+
+    bbox = draw.textbbox((0, 0), word, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (w - text_w) // 2 - bbox[0]
+    y = (h - text_h) // 2 - bbox[1]
+    draw.text((x, y), word, font=font, fill=(fg_color, fg_color, fg_color))
+    return img
+
+
+def rotate_180_pil(img: Image.Image) -> Image.Image:
+    return img.rotate(180)
+
+
+def blend_init_pil(
+    word_a: str,
+    word_b: str,
+    size: tuple[int, int] = (512, 512),
+    alpha: float = 0.5,
+) -> Image.Image:
+    """
+    Blend rendered word_a (upright) with rendered word_b (rotated 180°).
+    Returns a PIL Image — starting point for img2img optimization.
+    """
+    img_a = render_text_pil(word_a, size)
+    img_b = render_text_pil(word_b, size).rotate(180)
+    return Image.blend(img_a, img_b, 1 - alpha)
+
+
+def save_comparison_pil(
+    image: Image.Image,
+    path: str | Path,
+    word_a: str = "",
+    word_b: str = "",
+) -> None:
+    """Save a side-by-side PIL image: upright | rotated 180°."""
+    w, h = image.size
+    gap = 8
+    canvas = Image.new("RGB", (w * 2 + gap, h), color=(255, 255, 255))
+    canvas.paste(image, (0, 0))
+    canvas.paste(image.rotate(180), (w + gap, 0))
+
+    if word_a or word_b:
+        draw = ImageDraw.Draw(canvas)
+        draw.text((4, 4), word_a, fill=(180, 0, 0))
+        draw.text((w + gap + 4, 4), f"{word_b} (rotated)", fill=(0, 0, 180))
+
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(path)
 
 
 def blend_init(
