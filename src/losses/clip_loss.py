@@ -29,7 +29,7 @@ class CLIPLoss(nn.Module):
         model_name: str = "ViT-L-14",
         pretrained: str = "openai",
         device: torch.device = torch.device("cpu"),
-        n_augments: int = 32,
+        n_augments: int = 16,
     ) -> None:
         super().__init__()
 
@@ -66,24 +66,43 @@ class CLIPLoss(nn.Module):
         features = F.normalize(features, dim=-1)
         return features.mean(0, keepdim=True)
 
-    def forward(self, image: torch.Tensor, text_features: torch.Tensor) -> torch.Tensor:
+    def forward_pair(
+        self,
+        image_a: torch.Tensor,
+        image_b: torch.Tensor,
+        feat_a: torch.Tensor,
+        feat_b: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
+        Evaluate losses for both orientations in a single CLIP forward pass.
+
+        Concatenates n_augments crops from image_a with n_augments crops from image_b
+        into one batch of size 2*n_augments, runs it through CLIP once, then splits
+        the features to compute each loss. Halves the number of CLIP forward passes
+        compared to calling forward() twice, and fills the GPU more efficiently.
+
         Args:
-            image:         (C, H, W) float32 in [0, 1] — must require grad
-            text_features: (1, d)   pre-computed normalised text embedding
+            image_a / image_b: (C, H, W) float32 in [0, 1]
+            feat_a  / feat_b:  (1, d) pre-computed normalised text embeddings
         Returns:
-            scalar — lower means the image matches the text prompt better
+            (loss_a, loss_b) — negative cosine similarities
         """
-        if image.dim() == 3:
-            image = image.unsqueeze(0)          # (1, C, H, W)
+        def _crops(img: torch.Tensor) -> torch.Tensor:
+            if img.dim() == 4:
+                img = img.squeeze(0)
+            return torch.stack([
+                self.normalize(self.augment(img)) for _ in range(self.n_augments)
+            ])
 
-        crops = torch.stack([
-            self.normalize(self.augment(image.squeeze(0)))
-            for _ in range(self.n_augments)
-        ])                                       # (n_aug, 3, 224, 224)
+        batch = torch.cat([_crops(image_a), _crops(image_b)])   # (2*n_aug, 3, 224, 224)
 
-        img_features = self.clip.encode_image(crops)
-        img_features = F.normalize(img_features, dim=-1)   # (n_aug, d)
+        with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+            img_features = self.clip.encode_image(batch)
 
-        similarity = (img_features @ text_features.T).mean()
-        return -similarity
+        img_features = img_features.float()
+        img_features = F.normalize(img_features, dim=-1)        # (2*n_aug, d)
+
+        fa, fb = img_features[:self.n_augments], img_features[self.n_augments:]
+        loss_a = -(fa @ feat_a.T).mean()
+        loss_b = -(fb @ feat_b.T).mean()
+        return loss_a, loss_b

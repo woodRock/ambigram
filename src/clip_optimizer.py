@@ -26,7 +26,7 @@ class CLIPOptimizerConfig:
     # CLIP model
     clip_model: str = "ViT-L-14"
     clip_pretrained: str = "openai"
-    n_augments: int = 32      # crops per loss evaluation; more = stabler but slower
+    n_augments: int = 16      # crops per orientation; more = stabler gradients but slower
 
     # Optimisation
     num_steps: int = 2000
@@ -104,8 +104,10 @@ class CLIPAmbigramOptimizer:
 
         pbar = tqdm(range(self.cfg.num_steps), desc=f"'{self.word_a}' / '{self.word_b}'")
         for step in pbar:
-            loss_a = self.loss_fn(image, self.feat_a)
-            loss_b = self.loss_fn(rotate_180(image), self.feat_b)
+            # Both orientations in one CLIP batch — half the forward passes
+            loss_a, loss_b = self.loss_fn.forward_pair(
+                image, rotate_180(image), self.feat_a, self.feat_b
+            )
             loss_tv = _total_variation(image)
             loss_bw = (image * (1.0 - image)).mean()
 
@@ -119,7 +121,6 @@ class CLIPAmbigramOptimizer:
             optimizer.step()
             scheduler.step()
 
-            # Project back to valid pixel range without accumulating gradient
             with torch.no_grad():
                 image.data.clamp_(0.0, 1.0)
 
