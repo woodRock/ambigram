@@ -3,12 +3,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 
+from .bezier_glyph import BezierGlyph
 from .losses.clip_loss import CLIPLoss
-from .utils.image import blend_init, render_text_image, rotate_180, save_comparison, save_image
+from .utils.image import render_text_image, rotate_180, save_comparison, save_image
 
 log = logging.getLogger(__name__)
 
@@ -25,15 +28,31 @@ class Config:
     clip_model: str = "ViT-L-14"
     clip_pretrained: str = "openai"
     n_augments: int = 16
+    torch_compile: bool = False
+
+    # Representation mode: "pixel" or "bezier"
+    mode: str = "pixel"
+    n_strokes: int = 10          # bezier only
+    stroke_width: float = 0.04   # bezier only, in [0, 1] canvas fraction
 
     # Per-glyph optimisation
     glyph_size: int = 256
     num_steps: int = 500
     lr: float = 2e-2
 
-    # Regularisation
+    # Losses — pixel mode
     lambda_tv: float = 2e-3
     lambda_bw: float = 0.3
+
+    # Character classifier
+    use_classifier: bool = False
+    classifier_path: str = "data/char_classifier.pth"
+    lambda_char: float = 0.5
+
+    # Perceptual loss
+    use_perceptual: bool = False
+    lambda_perc: float = 0.1
+
     # Output
     output_dir: str = "outputs"
     log_every: int = 100
@@ -45,14 +64,11 @@ class Config:
 
 def letter_pairs(word: str) -> list[tuple[str, str]]:
     """
-    Return the unique letter pairs for a self-ambigram.
-
-    Pair (a, b) at index i means: glyph reads 'a' upright and 'b' rotated 180°.
-    For even-length words every letter has a distinct partner.
-    For odd-length words the middle letter pairs with itself.
-
     "SWIMS" → [('S','S'), ('W','M'), ('I','I')]
     "NOON"  → [('N','N'), ('O','O')]
+
+    Pair (a, b) means the glyph reads a upright and b when rotated 180°.
+    For odd-length words the middle letter is its own partner.
     """
     N = len(word)
     w = word.upper()
@@ -61,29 +77,23 @@ def letter_pairs(word: str) -> list[tuple[str, str]]:
 
 def compose(glyphs: list[torch.Tensor], N: int) -> torch.Tensor:
     """
-    Compose unique glyphs into the full N-character ambigram image.
+    Compose unique glyphs into the full N-character ambigram strip.
 
-    Uses the identity:  rotate_180([A | B | … | Z]) = [rot(Z) | … | rot(B) | rot(A)]
-
-    Layout (even N=4):  [g0 | g1 | rot(g1) | rot(g0)]
-    Layout (odd  N=5):  [g0 | g1 | g2 | rot(g1) | rot(g0)]
-
-    When the whole composed image is rotated 180°, the identity above gives back
-    the same tile sequence — so the word reads identically in both orientations.
+    The identity  rotate_180([A|B|…|Z]) = [rot(Z)|…|rot(B)|rot(A)]  means
+    the layout  [g₀ | g₁ | … | gₖ₋₁ | rot(gₖ₋₂) | … | rot(g₀)]  (odd N)
+            or  [g₀ | g₁ | … | gₖ₋₁ | rot(gₖ₋₁) | … | rot(g₀)]  (even N)
+    is self-symmetric under 180° rotation.
     """
     k = len(glyphs)
     tiles: list[torch.Tensor] = list(glyphs)
-
-    # Append the rotated second half, excluding the centre tile for odd words
     start = k - 2 if N % 2 == 1 else k - 1
     for i in range(start, -1, -1):
         tiles.append(rotate_180(glyphs[i]))
-
-    return torch.cat(tiles, dim=-1)  # concat along width (last dim of CHW)
+    return torch.cat(tiles, dim=-1)   # concat along width (last dim of CHW)
 
 
 # ---------------------------------------------------------------------------
-# Regularisation helpers
+# Regularisation
 # ---------------------------------------------------------------------------
 
 def _total_variation(x: torch.Tensor) -> torch.Tensor:
@@ -96,7 +106,7 @@ def _total_variation(x: torch.Tensor) -> torch.Tensor:
 
 
 # ---------------------------------------------------------------------------
-# Per-glyph optimiser
+# Text prompts
 # ---------------------------------------------------------------------------
 
 _PROMPTS = [
@@ -106,61 +116,137 @@ _PROMPTS = [
 ]
 
 
-class GlyphPairOptimizer:
+# ---------------------------------------------------------------------------
+# Parallel glyph-set optimiser
+# ---------------------------------------------------------------------------
+
+class GlyphSetOptimizer:
     """
-    Optimise a single square glyph that reads as char_a upright
-    and char_b when rotated 180°.
+    Optimise all letter-pair glyphs simultaneously in one CLIP batch per step.
+
+    Supports two representations:
+      pixel  — direct (1, H, W) pixel tensor optimised with projected GD
+      bezier — cubic Bézier stroke parameters rasterised differentiably
     """
 
     def __init__(
         self,
-        char_a: str,
-        char_b: str,
+        pairs: list[tuple[str, str]],
         config: Config,
         clip_loss: CLIPLoss,
+        char_classifier: Optional[nn.Module],
+        perceptual_loss: Optional[nn.Module],
         device: torch.device,
     ) -> None:
-        self.char_a = char_a.upper()
-        self.char_b = char_b.upper()
+        self.pairs = pairs
         self.cfg = config
         self.clip_loss = clip_loss
+        self.char_classifier = char_classifier
+        self.perceptual_loss = perceptual_loss
         self.device = device
 
-        self.feat_a = clip_loss.encode_prompts([t.format(ch=self.char_a) for t in _PROMPTS])
-        self.feat_b = clip_loss.encode_prompts([t.format(ch=self.char_b) for t in _PROMPTS])
+        s = config.glyph_size
 
-    def run(self, save_dir: Path | None = None) -> torch.Tensor:
-        s = self.cfg.glyph_size
+        if config.mode == "pixel":
+            imgs = []
+            for char_a, char_b in pairs:
+                ia = render_text_image(char_a, (s, s)).mean(0, keepdim=True).to(device)
+                ib = render_text_image(char_b, (s, s)).mean(0, keepdim=True).to(device)
+                init = (ia + rotate_180(ib)) * 0.5
+                imgs.append(nn.Parameter(init.detach().clone()))
+            self.pixel_params = nn.ParameterList(imgs)
+            self.bezier_glyphs: Optional[nn.ModuleList] = None
+        else:
+            self.pixel_params = None   # type: ignore[assignment]
+            glyphs = []
+            for char_a, _ in pairs:
+                glyphs.append(
+                    BezierGlyph.from_text(
+                        char_a,
+                        n_strokes=config.n_strokes,
+                        size=s,
+                        stroke_width=config.stroke_width,
+                        device=device,
+                    )
+                )
+            self.bezier_glyphs = nn.ModuleList(glyphs)
 
-        # Single-channel (grayscale) optimisation — colour noise is physically impossible
-        # with one channel; no need for a separate grayscale regularisation term.
-        img_a = render_text_image(self.char_a, (s, s)).mean(0, keepdim=True).to(self.device)
-        img_b = render_text_image(self.char_b, (s, s)).mean(0, keepdim=True).to(self.device)
+        # Pre-compute text features once
+        self.feats_a = [
+            clip_loss.encode_prompts([t.format(ch=a) for t in _PROMPTS])
+            for a, _ in pairs
+        ]
+        self.feats_b = [
+            clip_loss.encode_prompts([t.format(ch=b) for t in _PROMPTS])
+            for _, b in pairs
+        ]
 
-        image = (img_a + rotate_180(img_b)) * 0.5   # (1, H, W)
-        image = image.detach().clone()
-        image.requires_grad_(True)
+        # Perceptual target images (rendered reference letters)
+        if perceptual_loss is not None:
+            self.perc_targets_a = [
+                render_text_image(a, (s, s)).to(device) for a, _ in pairs
+            ]
+            self.perc_targets_b = [
+                render_text_image(b, (s, s)).to(device) for _, b in pairs
+            ]
+        else:
+            self.perc_targets_a = []
+            self.perc_targets_b = []
 
-        opt = torch.optim.Adam([image], lr=self.cfg.lr)
+    def _render_all(self) -> list[torch.Tensor]:
+        """Return current (1, H, W) grayscale images for all glyphs."""
+        if self.pixel_params is not None:
+            return list(self.pixel_params)
+        assert self.bezier_glyphs is not None
+        return [g.render() for g in self.bezier_glyphs]
+
+    def run(self, save_dir: Optional[Path] = None) -> list[torch.Tensor]:
+        if self.pixel_params is not None:
+            params = list(self.pixel_params)
+        else:
+            assert self.bezier_glyphs is not None
+            params = list(self.bezier_glyphs.parameters())
+
+        opt = torch.optim.Adam(params, lr=self.cfg.lr)
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(
             opt, T_max=self.cfg.num_steps, eta_min=self.cfg.lr * 0.1
         )
 
-        label = f"{self.char_a}↔{self.char_b}"
-        pbar = tqdm(range(self.cfg.num_steps), desc=f"  glyph {label}", leave=False)
-        for step in pbar:
-            # Expand to RGB for CLIP; gradient flows back through expand to the 1-ch image
-            rgb       = image.expand(3, -1, -1)
-            rgb_rot   = rotate_180(image).expand(3, -1, -1)
+        n_pairs = len(self.pairs)
+        for step in tqdm(range(self.cfg.num_steps), desc="Optimising glyphs"):
+            imgs = self._render_all()                                      # list (1, H, W)
+            rgbs     = [img.expand(3, -1, -1) for img in imgs]            # list (3, H, W)
+            rgbs_rot = [rotate_180(img).expand(3, -1, -1) for img in imgs]
 
-            loss_a, loss_b = self.clip_loss.forward_pair(
-                rgb, rgb_rot, self.feat_a, self.feat_b
+            # All glyphs × both orientations in one CLIP batch
+            losses_a, losses_b = self.clip_loss.forward_all(
+                rgbs, rgbs_rot, self.feats_a, self.feats_b
             )
-            reg = (
-                self.cfg.lambda_tv * _total_variation(image) +
-                self.cfg.lambda_bw * (image * (1.0 - image)).mean()
-            )
-            loss = loss_a + loss_b + reg
+            loss = sum(losses_a) + sum(losses_b)
+
+            # Pixel regularisation
+            if self.cfg.mode == "pixel":
+                for img in imgs:
+                    loss = loss + self.cfg.lambda_tv * _total_variation(img)
+                    loss = loss + self.cfg.lambda_bw * (img * (1.0 - img)).mean()
+
+            # Character classifier
+            if self.char_classifier is not None:
+                for i, (char_a, char_b) in enumerate(self.pairs):
+                    loss = loss + self.cfg.lambda_char * (
+                        self.char_classifier.readability_loss(imgs[i], char_a) +
+                        self.char_classifier.readability_loss(rotate_180(imgs[i]), char_b)
+                    )
+
+            # Perceptual loss
+            if self.perceptual_loss is not None:
+                for i, img in enumerate(imgs):
+                    rgb     = img.expand(3, -1, -1)
+                    rgb_rot = rotate_180(img).expand(3, -1, -1)
+                    loss = loss + self.cfg.lambda_perc * (
+                        self.perceptual_loss(rgb,     self.perc_targets_a[i]) +
+                        self.perceptual_loss(rgb_rot, self.perc_targets_b[i])
+                    )
 
             opt.zero_grad()
             loss.backward()
@@ -168,19 +254,36 @@ class GlyphPairOptimizer:
             sched.step()
 
             with torch.no_grad():
-                image.data.clamp_(0.0, 1.0)
-
-            pbar.set_postfix(a=f"{loss_a:.3f}", b=f"{loss_b:.3f}")
+                if self.pixel_params is not None:
+                    for p in self.pixel_params:
+                        p.data.clamp_(0.0, 1.0)
+                elif self.bezier_glyphs is not None:
+                    for g in self.bezier_glyphs:
+                        g.control_points.data.clamp_(0.0, 1.0)
 
             if save_dir and (step % self.cfg.log_every == 0 or step == self.cfg.num_steps - 1):
-                save_comparison(
-                    image.detach().cpu().expand(3, -1, -1),
-                    save_dir / f"step_{step:04d}.png",
-                    word_a=self.char_a,
-                    word_b=self.char_b,
+                with torch.no_grad():
+                    for i, (char_a, char_b) in enumerate(self.pairs):
+                        gd = save_dir / f"glyph_{i}_{char_a}_{char_b}"
+                        gd.mkdir(exist_ok=True)
+                        rgb = imgs[i].detach().cpu().expand(3, -1, -1)
+                        save_comparison(rgb, gd / f"step_{step:04d}.png",
+                                        word_a=char_a, word_b=char_b)
+
+        # Final images (CPU)
+        result: list[torch.Tensor] = []
+        with torch.no_grad():
+            for img in self._render_all():
+                result.append(img.detach().cpu().expand(3, -1, -1).clone())
+
+        # SVG export
+        if save_dir and self.bezier_glyphs is not None:
+            for i, (char_a, char_b) in enumerate(self.pairs):
+                self.bezier_glyphs[i].to_svg(        # type: ignore[index]
+                    save_dir / f"glyph_{i}_{char_a}_{char_b}.svg"
                 )
 
-        return image.detach().cpu().expand(3, -1, -1).clone()
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +292,8 @@ class GlyphPairOptimizer:
 
 class SelfAmbigramGenerator:
     """
-    Generate a self-ambigram by optimising each letter pair independently,
-    then composing the glyphs into the final word image.
+    Generate a self-ambigram: optimise all letter-pair glyphs in parallel,
+    then compose them into the final word image.
     """
 
     def __init__(self, config: Config, device: torch.device) -> None:
@@ -204,6 +307,7 @@ class SelfAmbigramGenerator:
             pretrained=config.clip_pretrained,
             device=device,
             n_augments=config.n_augments,
+            use_compile=config.torch_compile,
         )
 
         self.pairs = letter_pairs(self.word)
@@ -212,23 +316,42 @@ class SelfAmbigramGenerator:
             f"{a}↔{b}" + (" [mid]" if N % 2 == 1 and i == len(self.pairs) - 1 else "")
             for i, (a, b) in enumerate(self.pairs)
         )
-        log.info("Word: %s   Pairs: %s", self.word, pair_str)
+        log.info("Word: %s   Mode: %s   Pairs: %s", self.word, config.mode, pair_str)
+
+        # Optional: character classifier
+        self.char_classifier: Optional[nn.Module] = None
+        if config.use_classifier:
+            p = Path(config.classifier_path)
+            if p.exists():
+                from .char_classifier import CharClassifier
+                self.char_classifier = CharClassifier.load(p, device)
+                log.info("Loaded character classifier from %s", p)
+            else:
+                log.warning("Classifier checkpoint not found at %s — skipping", p)
+
+        # Optional: perceptual loss
+        self.perceptual_loss: Optional[nn.Module] = None
+        if config.use_perceptual:
+            from .losses.perceptual_loss import PerceptualLoss
+            self.perceptual_loss = PerceptualLoss(device)
+            log.info("Perceptual (VGG) loss enabled.")
 
     def run(self) -> torch.Tensor:
         out = Path(self.cfg.output_dir)
         out.mkdir(parents=True, exist_ok=True)
 
-        glyphs: list[torch.Tensor] = []
-        for i, (char_a, char_b) in enumerate(self.pairs):
-            log.info("[%d/%d] Optimising glyph %s↔%s", i + 1, len(self.pairs), char_a, char_b)
-            glyph_dir = out / f"glyph_{i}_{char_a}_{char_b}"
-            glyph_dir.mkdir(exist_ok=True)
+        optimizer = GlyphSetOptimizer(
+            pairs=self.pairs,
+            config=self.cfg,
+            clip_loss=self.clip_loss,
+            char_classifier=self.char_classifier,
+            perceptual_loss=self.perceptual_loss,
+            device=self.device,
+        )
+        glyphs = optimizer.run(save_dir=out)
 
-            glyph = GlyphPairOptimizer(
-                char_a, char_b, self.cfg, self.clip_loss, self.device
-            ).run(save_dir=glyph_dir)
-
-            glyphs.append(glyph)
+        # Save individual glyph images
+        for i, ((char_a, char_b), glyph) in enumerate(zip(self.pairs, glyphs)):
             save_image(glyph, out / f"glyph_{i}_{char_a}_{char_b}.png")
             save_image(rotate_180(glyph), out / f"glyph_{i}_{char_a}_{char_b}_rot.png")
 

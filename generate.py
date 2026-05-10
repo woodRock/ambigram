@@ -2,12 +2,14 @@
 """
 Self-ambigram generator — CLIP-guided per-glyph optimisation.
 
-Splits the word into letter pairs, optimises each glyph independently,
+Splits the word into letter pairs, optimises each glyph simultaneously,
 then composes them into a word that reads the same rotated 180°.
 
 Usage:
   python generate.py --word SWIMS
   python generate.py --word NOON --steps 800 --glyph-size 384
+  python generate.py --word SWIMS --mode bezier --n-strokes 12
+  python generate.py --word SWIMS --use-perceptual --use-classifier
 """
 from __future__ import annotations
 
@@ -27,17 +29,42 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--word", required=True, help="Word to ambigramise (e.g. SWIMS, NOON)")
 
+    # CLIP
     p.add_argument("--clip-model",      default="ViT-L-14")
     p.add_argument("--clip-pretrained", default="openai")
-    p.add_argument("--n-augments",      type=int,   default=16)
+    p.add_argument("--n-augments",      type=int, default=16)
+    p.add_argument("--torch-compile",   action="store_true",
+                   help="Apply torch.compile to the CLIP model (CUDA only)")
 
-    p.add_argument("--glyph-size", type=int,   default=256,  help="Square glyph canvas size in px")
-    p.add_argument("--steps",      type=int,   default=500,  help="Optimisation steps per glyph")
+    # Representation
+    p.add_argument("--mode", choices=["pixel", "bezier"], default="pixel",
+                   help="Glyph representation: direct pixels or Bézier strokes")
+    p.add_argument("--n-strokes",    type=int,   default=10,
+                   help="Number of Bézier strokes per glyph (bezier mode only)")
+    p.add_argument("--stroke-width", type=float, default=0.04,
+                   help="Stroke half-width as a fraction of canvas size (bezier mode)")
+
+    # Optimisation
+    p.add_argument("--glyph-size", type=int,   default=256)
+    p.add_argument("--steps",      type=int,   default=500)
     p.add_argument("--lr",         type=float, default=2e-2)
 
+    # Pixel regularisation
     p.add_argument("--lambda-tv", type=float, default=2e-3)
     p.add_argument("--lambda-bw", type=float, default=0.3)
 
+    # Character classifier
+    p.add_argument("--use-classifier",  action="store_true",
+                   help="Add character-classifier readability loss")
+    p.add_argument("--classifier-path", default="data/char_classifier.pth")
+    p.add_argument("--lambda-char",     type=float, default=0.5)
+
+    # Perceptual loss
+    p.add_argument("--use-perceptual", action="store_true",
+                   help="Add VGG perceptual loss towards rendered reference letters")
+    p.add_argument("--lambda-perc",    type=float, default=0.1)
+
+    # Output
     p.add_argument("--output-dir", default="outputs")
     p.add_argument("--log-every",  type=int, default=100)
     p.add_argument("--device",     default="")
@@ -67,11 +94,20 @@ def main() -> None:
         clip_model=args.clip_model,
         clip_pretrained=args.clip_pretrained,
         n_augments=args.n_augments,
+        torch_compile=args.torch_compile,
+        mode=args.mode,
+        n_strokes=args.n_strokes,
+        stroke_width=args.stroke_width,
         glyph_size=args.glyph_size,
         num_steps=args.steps,
         lr=args.lr,
         lambda_tv=args.lambda_tv,
         lambda_bw=args.lambda_bw,
+        use_classifier=args.use_classifier,
+        classifier_path=args.classifier_path,
+        lambda_char=args.lambda_char,
+        use_perceptual=args.use_perceptual,
+        lambda_perc=args.lambda_perc,
         output_dir=str(Path(args.output_dir) / args.word.upper()),
         log_every=args.log_every,
     )
