@@ -34,8 +34,6 @@ class Config:
     # Regularisation
     lambda_tv: float = 2e-3
     lambda_bw: float = 0.3
-    lambda_color: float = 2.0
-
     # Output
     output_dir: str = "outputs"
     log_every: int = 100
@@ -97,13 +95,6 @@ def _total_variation(x: torch.Tensor) -> torch.Tensor:
     )
 
 
-def _grayscale_loss(x: torch.Tensor) -> torch.Tensor:
-    """Penalise inter-channel variance — forces RGB toward equal channels (B&W)."""
-    if x.dim() == 3:
-        x = x.unsqueeze(0)
-    return (x - x.mean(dim=1, keepdim=True)).pow(2).mean()
-
-
 # ---------------------------------------------------------------------------
 # Per-glyph optimiser
 # ---------------------------------------------------------------------------
@@ -140,11 +131,13 @@ class GlyphPairOptimizer:
 
     def run(self, save_dir: Path | None = None) -> torch.Tensor:
         s = self.cfg.glyph_size
-        img_a = render_text_image(self.char_a, (s, s)).to(self.device)
-        img_b = render_text_image(self.char_b, (s, s)).to(self.device)
 
-        # Blend: upright char_a + rotated char_b — sees both letters from the start
-        image = (img_a + rotate_180(img_b)) * 0.5
+        # Single-channel (grayscale) optimisation — colour noise is physically impossible
+        # with one channel; no need for a separate grayscale regularisation term.
+        img_a = render_text_image(self.char_a, (s, s)).mean(0, keepdim=True).to(self.device)
+        img_b = render_text_image(self.char_b, (s, s)).mean(0, keepdim=True).to(self.device)
+
+        image = (img_a + rotate_180(img_b)) * 0.5   # (1, H, W)
         image = image.detach().clone()
         image.requires_grad_(True)
 
@@ -156,13 +149,16 @@ class GlyphPairOptimizer:
         label = f"{self.char_a}↔{self.char_b}"
         pbar = tqdm(range(self.cfg.num_steps), desc=f"  glyph {label}", leave=False)
         for step in pbar:
+            # Expand to RGB for CLIP; gradient flows back through expand to the 1-ch image
+            rgb       = image.expand(3, -1, -1)
+            rgb_rot   = rotate_180(image).expand(3, -1, -1)
+
             loss_a, loss_b = self.clip_loss.forward_pair(
-                image, rotate_180(image), self.feat_a, self.feat_b
+                rgb, rgb_rot, self.feat_a, self.feat_b
             )
             reg = (
-                self.cfg.lambda_tv    * _total_variation(image) +
-                self.cfg.lambda_bw    * (image * (1.0 - image)).mean() +
-                self.cfg.lambda_color * _grayscale_loss(image)
+                self.cfg.lambda_tv * _total_variation(image) +
+                self.cfg.lambda_bw * (image * (1.0 - image)).mean()
             )
             loss = loss_a + loss_b + reg
 
@@ -178,13 +174,13 @@ class GlyphPairOptimizer:
 
             if save_dir and (step % self.cfg.log_every == 0 or step == self.cfg.num_steps - 1):
                 save_comparison(
-                    image.detach().cpu(),
+                    image.detach().cpu().expand(3, -1, -1),
                     save_dir / f"step_{step:04d}.png",
                     word_a=self.char_a,
                     word_b=self.char_b,
                 )
 
-        return image.detach().cpu()
+        return image.detach().cpu().expand(3, -1, -1).clone()
 
 
 # ---------------------------------------------------------------------------

@@ -35,9 +35,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--steps",      type=int,   default=500,  help="Optimisation steps per glyph")
     p.add_argument("--lr",         type=float, default=2e-2)
 
-    p.add_argument("--lambda-tv",    type=float, default=2e-3)
-    p.add_argument("--lambda-bw",    type=float, default=0.3)
-    p.add_argument("--lambda-color", type=float, default=2.0)
+    p.add_argument("--lambda-tv", type=float, default=2e-3)
+    p.add_argument("--lambda-bw", type=float, default=0.3)
 
     p.add_argument("--output-dir", default="outputs")
     p.add_argument("--log-every",  type=int, default=100)
@@ -73,7 +72,6 @@ def main() -> None:
         lr=args.lr,
         lambda_tv=args.lambda_tv,
         lambda_bw=args.lambda_bw,
-        lambda_color=args.lambda_color,
         output_dir=str(Path(args.output_dir) / args.word.upper()),
         log_every=args.log_every,
     )
