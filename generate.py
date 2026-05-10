@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     # Representation
     p.add_argument("--mode", choices=["pixel", "bezier"], default="pixel",
                    help="Glyph representation: direct pixels or Bézier strokes")
-    p.add_argument("--n-strokes",    type=int,   default=10,
+    p.add_argument("--n-strokes",    type=int,   default=6,
                    help="Number of Bézier strokes per glyph (bezier mode only)")
     p.add_argument("--stroke-width", type=float, default=0.04,
                    help="Stroke half-width as a fraction of canvas size (bezier mode)")
@@ -50,8 +50,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lr",         type=float, default=2e-2)
 
     # Pixel regularisation
-    p.add_argument("--lambda-tv", type=float, default=2e-3)
-    p.add_argument("--lambda-bw", type=float, default=0.3)
+    p.add_argument("--lambda-tv",     type=float, default=5e-3)
+    p.add_argument("--lambda-bw",     type=float, default=0.8)
+    p.add_argument("--lambda-anchor", type=float, default=0.5,
+                   help="Anchor loss weight: pulls image toward blended reference "
+                        "to suppress background noise (pixel mode)")
 
     # Character classifier
     p.add_argument("--use-classifier",  action="store_true",
@@ -103,6 +106,7 @@ def main() -> None:
         lr=args.lr,
         lambda_tv=args.lambda_tv,
         lambda_bw=args.lambda_bw,
+        lambda_anchor=args.lambda_anchor,
         use_classifier=args.use_classifier,
         classifier_path=args.classifier_path,
         lambda_char=args.lambda_char,

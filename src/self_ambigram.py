@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from tqdm import tqdm
 
 from .bezier_glyph import BezierGlyph
@@ -32,17 +33,18 @@ class Config:
 
     # Representation mode: "pixel" or "bezier"
     mode: str = "pixel"
-    n_strokes: int = 10          # bezier only
-    stroke_width: float = 0.04   # bezier only, in [0, 1] canvas fraction
+    n_strokes: int = 6            # bezier only
+    stroke_width: float = 0.035   # bezier only, in [0, 1] canvas fraction
 
     # Per-glyph optimisation
     glyph_size: int = 256
     num_steps: int = 500
     lr: float = 2e-2
 
-    # Losses — pixel mode
-    lambda_tv: float = 2e-3
-    lambda_bw: float = 0.3
+    # Pixel regularisation
+    lambda_tv: float = 5e-3      # total variation — suppresses fine noise
+    lambda_bw: float = 0.8       # black-and-white push — keeps strokes crisp
+    lambda_anchor: float = 0.5   # pulls image toward blended reference — prevents bg noise
 
     # Character classifier
     use_classifier: bool = False
@@ -93,7 +95,7 @@ def compose(glyphs: list[torch.Tensor], N: int) -> torch.Tensor:
 
 
 # ---------------------------------------------------------------------------
-# Regularisation
+# Regularisation helpers
 # ---------------------------------------------------------------------------
 
 def _total_variation(x: torch.Tensor) -> torch.Tensor:
@@ -110,9 +112,9 @@ def _total_variation(x: torch.Tensor) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 
 _PROMPTS = [
-    "the letter {ch} in bold black sans-serif typography on a plain white background",
-    "a single uppercase {ch} character in black ink on white",
-    "the capital letter {ch}, high contrast, crisp edges",
+    "the single letter {ch} in bold black sans-serif on a clean white background, isolated, no other marks",
+    "one uppercase {ch} character, black ink on pure white, no texture or background noise",
+    "capital letter {ch} only, white background, high contrast, crisp edges, completely isolated",
 ]
 
 
@@ -149,15 +151,20 @@ class GlyphSetOptimizer:
 
         if config.mode == "pixel":
             imgs = []
+            refs = []
             for char_a, char_b in pairs:
                 ia = render_text_image(char_a, (s, s)).mean(0, keepdim=True).to(device)
                 ib = render_text_image(char_b, (s, s)).mean(0, keepdim=True).to(device)
-                init = (ia + rotate_180(ib)) * 0.5
-                imgs.append(nn.Parameter(init.detach().clone()))
+                ref = (ia + rotate_180(ib)) * 0.5
+                refs.append(ref.detach())
+                imgs.append(nn.Parameter(ref.clone()))
             self.pixel_params = nn.ParameterList(imgs)
+            # Blended reference held fixed; used by the anchor loss
+            self._refs: list[torch.Tensor] = refs
             self.bezier_glyphs: Optional[nn.ModuleList] = None
         else:
             self.pixel_params = None   # type: ignore[assignment]
+            self._refs = []
             glyphs = []
             for char_a, _ in pairs:
                 glyphs.append(
@@ -212,7 +219,6 @@ class GlyphSetOptimizer:
             opt, T_max=self.cfg.num_steps, eta_min=self.cfg.lr * 0.1
         )
 
-        n_pairs = len(self.pairs)
         for step in tqdm(range(self.cfg.num_steps), desc="Optimising glyphs"):
             imgs = self._render_all()                                      # list (1, H, W)
             rgbs     = [img.expand(3, -1, -1) for img in imgs]            # list (3, H, W)
@@ -226,9 +232,22 @@ class GlyphSetOptimizer:
 
             # Pixel regularisation
             if self.cfg.mode == "pixel":
-                for img in imgs:
+                for i, img in enumerate(imgs):
                     loss = loss + self.cfg.lambda_tv * _total_variation(img)
                     loss = loss + self.cfg.lambda_bw * (img * (1.0 - img)).mean()
+                    # Anchor loss: pulls toward the blended reference initialisation.
+                    # This suppresses background noise/stripe artefacts that CLIP
+                    # adds over time to maximise its own score.
+                    loss = loss + self.cfg.lambda_anchor * (img - self._refs[i]).pow(2).mean()
+
+            # Bézier spread: penalise stroke centres that are too close together.
+            # Encourages strokes to cover the canvas instead of all piling on one spot.
+            if self.cfg.mode == "bezier" and self.bezier_glyphs is not None:
+                for g in self.bezier_glyphs:   # type: ignore[union-attr]
+                    centres = g.control_points.mean(1)               # (n_s, 2)
+                    diff = centres.unsqueeze(0) - centres.unsqueeze(1)   # (n_s, n_s, 2)
+                    dists = diff.norm(dim=-1)                         # (n_s, n_s)
+                    loss = loss + 0.5 * F.relu(0.12 - dists).mean()
 
             # Character classifier
             if self.char_classifier is not None:

@@ -97,14 +97,18 @@ class BezierGlyph(nn.Module):
     def from_text(
         cls,
         char: str,
-        n_strokes: int = 10,
+        n_strokes: int = 6,
         size: int = 256,
-        stroke_width: float = 0.04,
+        stroke_width: float = 0.035,
         device: torch.device = torch.device("cpu"),
     ) -> "BezierGlyph":
         """
-        Initialise with curves whose endpoints are sampled from the rendered letter's
-        ink pixels, giving the optimiser a head start versus pure random init.
+        Initialise strokes along the rendered letter's ink pixels.
+
+        Splits the ink region into n_strokes horizontal bands and draws one
+        short, local stroke per band.  This avoids the long crossing strokes
+        that random endpoint sampling produces, which tangle into an
+        unrecoverable mess during CLIP optimisation.
         """
         from .utils.image import render_text_image
 
@@ -113,16 +117,24 @@ class BezierGlyph(nn.Module):
 
         glyph = cls(n_strokes, size, stroke_width, device)
 
-        if ink.shape[0] < 4:
+        if ink.shape[0] < n_strokes * 2:
             return glyph
 
-        ink_xy = ink[:, [1, 0]] / (size - 1)   # (N, 2) as (x, y) in [0, 1]
+        # Sort by y (row) so we assign one horizontal band per stroke
+        ink_xy = ink[:, [1, 0]] / (size - 1)           # (N, 2) as (x, y) in [0, 1]
+        order  = ink_xy[:, 1].argsort()
+        ink_sorted = ink_xy[order]
 
+        band = len(ink_sorted) // n_strokes
         pts_list = []
-        for _ in range(n_strokes):
-            idxs = torch.randperm(ink_xy.shape[0])[:2]
-            p0, p3 = ink_xy[idxs[0]], ink_xy[idxs[1]]
-            noise = torch.randn(2, 2) * 0.04
+        for i in range(n_strokes):
+            chunk = ink_sorted[i * band : (i + 1) * band]
+            if len(chunk) < 2:
+                chunk = ink_sorted[-2:]
+            # Pick two points WITHIN the band — guarantees short local strokes
+            idxs = torch.randperm(len(chunk))[:2]
+            p0, p3 = chunk[idxs[0]], chunk[idxs[1]]
+            noise = torch.randn(2, 2) * 0.02
             p1 = (p0 * 0.67 + p3 * 0.33 + noise[0]).clamp(0.0, 1.0)
             p2 = (p0 * 0.33 + p3 * 0.67 + noise[1]).clamp(0.0, 1.0)
             pts_list.append(torch.stack([p0, p1, p2, p3]))
