@@ -4,6 +4,7 @@ data/*.zip
 
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *.pth
 .env
