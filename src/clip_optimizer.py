@@ -34,8 +34,9 @@ class CLIPOptimizerConfig:
 
     # Loss weights
     lambda_b: float = 1.0    # weight of the rotated-view CLIP loss
-    lambda_tv: float = 5e-4  # total variation — controls smoothness
-    lambda_bw: float = 0.1   # black/white push — encourages crisp typography
+    lambda_tv: float = 2e-3  # total variation — controls smoothness
+    lambda_bw: float = 0.3   # black/white push — encourages crisp typography
+    lambda_color: float = 2.0  # grayscale constraint — eliminates adversarial colour noise
 
     # Multi-prompt templates — averaged for robustness
     prompt_templates: list[str] = field(default_factory=lambda: [
@@ -56,6 +57,14 @@ def _total_variation(x: torch.Tensor) -> torch.Tensor:
     dh = (x[:, :, 1:, :] - x[:, :, :-1, :]).abs().mean()
     dw = (x[:, :, :, 1:] - x[:, :, :, :-1]).abs().mean()
     return dh + dw
+
+
+def _grayscale_loss(x: torch.Tensor) -> torch.Tensor:
+    """Penalise inter-channel variance — pushes RGB toward equal channels (B&W image)."""
+    if x.dim() == 3:
+        x = x.unsqueeze(0)
+    mean_ch = x.mean(dim=1, keepdim=True)
+    return (x - mean_ch).pow(2).mean()
 
 
 class CLIPAmbigramOptimizer:
@@ -108,13 +117,15 @@ class CLIPAmbigramOptimizer:
             loss_a, loss_b = self.loss_fn.forward_pair(
                 image, rotate_180(image), self.feat_a, self.feat_b
             )
-            loss_tv = _total_variation(image)
-            loss_bw = (image * (1.0 - image)).mean()
+            loss_tv    = _total_variation(image)
+            loss_bw    = (image * (1.0 - image)).mean()
+            loss_color = _grayscale_loss(image)
 
             loss = (loss_a
-                    + self.cfg.lambda_b  * loss_b
-                    + self.cfg.lambda_tv * loss_tv
-                    + self.cfg.lambda_bw * loss_bw)
+                    + self.cfg.lambda_b     * loss_b
+                    + self.cfg.lambda_tv    * loss_tv
+                    + self.cfg.lambda_bw    * loss_bw
+                    + self.cfg.lambda_color * loss_color)
 
             optimizer.zero_grad()
             loss.backward()
@@ -127,7 +138,7 @@ class CLIPAmbigramOptimizer:
             pbar.set_postfix(
                 a=f"{loss_a.item():.3f}",
                 b=f"{loss_b.item():.3f}",
-                tv=f"{loss_tv.item():.4f}",
+                col=f"{loss_color.item():.4f}",
             )
 
             if step % self.cfg.log_every == 0 or step == self.cfg.num_steps - 1:

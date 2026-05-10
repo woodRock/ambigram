@@ -37,9 +37,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--steps",  type=int,   default=2000)
     p.add_argument("--lr",     type=float, default=2e-2)
 
-    p.add_argument("--lambda-b",  type=float, default=1.0,  help="Weight of rotated-view loss")
-    p.add_argument("--lambda-tv", type=float, default=5e-4, help="Total variation weight (smoothness)")
-    p.add_argument("--lambda-bw", type=float, default=0.1,  help="Black/white push weight")
+    p.add_argument("--lambda-b",     type=float, default=1.0,  help="Weight of rotated-view loss")
+    p.add_argument("--lambda-tv",    type=float, default=2e-3, help="Total variation weight (smoothness)")
+    p.add_argument("--lambda-bw",    type=float, default=0.3,  help="Black/white push weight")
+    p.add_argument("--lambda-color", type=float, default=2.0,  help="Grayscale constraint weight (eliminates colour noise)")
 
     p.add_argument("--output-dir", default="outputs")
     p.add_argument("--log-every",  type=int, default=100)
@@ -79,6 +80,7 @@ def main() -> None:
         lambda_b=args.lambda_b,
         lambda_tv=args.lambda_tv,
         lambda_bw=args.lambda_bw,
+        lambda_color=args.lambda_color,
         output_dir=output_dir,
         log_every=args.log_every,
     )

@@ -41,19 +41,20 @@ class CLIPLoss(nn.Module):
         self.device = device
         self.normalize = T.Normalize(mean=_MEAN, std=_STD)
 
-        # Random crop + mild affine — no flips, no colour inversion
+        # Large crops only — small crops let the optimiser satisfy CLIP with background
+        # texture fragments instead of improving the target letterforms.
+        # No flips (would mirror text), no colour jitter (we enforce grayscale separately).
         self.augment = T.Compose([
             T.RandomResizedCrop(
                 224,
-                scale=(0.4, 1.0),
-                ratio=(0.75, 1.33),
+                scale=(0.65, 1.0),
+                ratio=(0.85, 1.15),
                 interpolation=T.InterpolationMode.BILINEAR,
                 antialias=True,
             ),
             T.RandomAffine(
-                degrees=5,
-                translate=(0.05, 0.05),
-                scale=(0.9, 1.1),
+                degrees=3,
+                translate=(0.03, 0.03),
                 interpolation=T.InterpolationMode.BILINEAR,
             ),
         ])
