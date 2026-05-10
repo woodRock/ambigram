@@ -235,13 +235,11 @@ class BezierGlyph(nn.Module):
         if symmetric:
             selected, grps = _get(char_a, n_free, flip=False)
         else:
-            n_a = n_free // 2
-            n_b = n_free - n_a
-            segs_a, grps_a = _get(char_a, n_a, flip=False)
-            segs_b, grps_b = _get(char_b or char_a, n_b, flip=True)
-            selected = segs_a + segs_b
-            # Shift char_b group indices to account for the char_a offset.
-            grps = grps_a + [[idx + n_a for idx in g] for g in grps_b]
+            # Initialize entirely from char_a — one unified form whose strokes
+            # are shared between both orientations.  The optimizer simultaneously
+            # satisfies the char_a (upright) and char_b (rotated) classifier
+            # signals, deforming the single shape until it reads as both.
+            selected, grps = _get(char_a, n_free, flip=False)
 
         if len(selected) == n_free:
             noise = torch.randn(n_free, 4, 2, device=device) * 0.015
