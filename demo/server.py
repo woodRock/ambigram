@@ -103,6 +103,10 @@ async def _ws(websocket: WebSocket) -> None:
                 word=word,
                 classifier=CLASSIFIER,  # type: ignore[arg-type]
                 device=DEVICE,
+                n_strokes=10,
+                glyph_size=128,
+                warmstart_steps=600,
+                cmaes_budget=0,
                 on_update=_on_update,
             ).run()
         except Exception as exc:
